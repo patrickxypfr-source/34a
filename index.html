@@ -223,9 +223,9 @@ pre{margin:10px 0 0;padding:12px;background:var(--paper);border:1.5px solid var(
       <div><dt>Fragen</dt><dd id="mQ">0</dd></div>
       <div><dt>Zeit</dt><dd id="mT">0</dd></div>
       <div><dt>Bestanden ab</dt><dd id="mP">50 %</dd></div>
-      <div><dt>Wertung</dt><dd>1 Punkt</dd></div>
+      <div><dt>Wertung</dt><dd>1 Punkt je Einfach-, bis 2 je Mehrfachauswahl</dd></div>
     </dl>
-    <p class="fine">Ein Punkt je Frage. Bei Mehrfachauswahl zählt eine Frage nur, wenn genau die richtigen Antworten gewählt sind. Die Zeit beträgt 120 Minuten für 82 Fragen.</p>
+    <p class="fine">Einfachauswahl: 1 Punkt bei richtiger Antwort. Mehrfachauswahl: bis zu 2 Punkte, 2 Punkte nur bei genau den richtigen Antworten, 1 Punkt bei teilweise richtiger Auswahl mit höchstens einer falschen Antwort (z. B. 1 richtig, 1 falsch). Die Zeit beträgt 120 Minuten für 82 Fragen.</p>
 
     <div class="panel">
       <label class="check"><input type="checkbox" id="optShuffle" checked><span>Fragen und Antworten mischen<small>Bei jedem Durchgang eine neue Reihenfolge, auch der Antwortmöglichkeiten.</small></span></label>
@@ -360,6 +360,14 @@ const $=id=>document.getElementById(id);
 function el(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;}
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a;}
 function fmtTime(ms){const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function maxPts(q){return q.type==='multi'?2:1;}
+function pointsFor(q,a){
+  if(q.type!=='multi')return a.length===1&&q.correct.includes(a[0])?1:0;
+  const right=a.filter(x=>q.correct.includes(x)).length,wrong=a.length-right;
+  if(wrong===0&&right===q.correct.length)return 2;
+  if(right>=1&&wrong<=1)return 1;
+  return 0;
+}
 function sameSet(a,b){if(a.length!==b.length)return false;const s=new Set(a);return b.every(x=>s.has(x));}
 function dispQ(t){return t.replace(/\s*\(Mehrere Antworten[^)]*\)\s*$/,'');}
 function show(name){['start','exam','result'].forEach(n=>{$(n).hidden=n!==name;});window.scrollTo(0,0);}
@@ -606,18 +614,19 @@ function renderResult(timeUp){
   const n=exam.qs.length;
   results=exam.qs.map((q,i)=>{
     const a=exam.answers[i];
-    return {i:i,q:q,a:a,marked:exam.marked[i],state:a.length===0?'blank':(sameSet(a,q.correct)?'ok':'bad')};
+    return {i:i,q:q,a:a,marked:exam.marked[i],pts:pointsFor(q,a),max:maxPts(q),state:a.length===0?'blank':(pointsFor(q,a)===maxPts(q)?'ok':(pointsFor(q,a)>0?'part':'bad'))};
   });
-  const score=results.filter(r=>r.state==='ok').length;
-  const ratio=n?score/n:0;
+  const score=results.reduce((s,r)=>s+r.pts,0);
+  const maxScore=results.reduce((s,r)=>s+r.max,0);
+  const ratio=maxScore?score/maxScore:0;
   const pass=ratio>=CONFIG.passRatio;
   $('resEyebrow').textContent=timeUp?'Zeit abgelaufen · Auswertung':'Auswertung';
   const st=$('stamp');st.textContent=pass?'Bestanden':'Nicht bestanden';st.className='stamp '+(pass?'pass':'fail');
-  $('resScore').textContent=score+' / '+n;
-  $('resMeta').textContent=fmtPct(ratio)+' · Grenze '+Math.round(CONFIG.passRatio*100)+' % · benötigt '+Math.ceil(CONFIG.passRatio*n)+' Punkte';
+  $('resScore').textContent=score+' / '+maxScore;
+  $('resMeta').textContent=fmtPct(ratio)+' · Grenze '+Math.round(CONFIG.passRatio*100)+' % · benötigt '+Math.ceil(CONFIG.passRatio*maxScore)+' Punkte';
 
   const byTopic={};
-  results.forEach(r=>{const t=r.q.group;byTopic[t]=byTopic[t]||{ok:0,total:0};byTopic[t].total++;if(r.state==='ok')byTopic[t].ok++;});
+  results.forEach(r=>{const t=r.q.group;byTopic[t]=byTopic[t]||{ok:0,total:0};byTopic[t].total+=r.max;byTopic[t].ok+=r.pts;});
   const rows=$('topicRows');rows.replaceChildren();
   Object.keys(byTopic).forEach(t=>{
     const d=byTopic[t];const rt=d.ok/d.total;
@@ -653,8 +662,8 @@ function renderReview(){
     const item=el('article','ritem');
     const head=el('div','rhead');
     head.append(el('b','mono','Aufgabe '+(r.i+1)),el('span','topic',q.topic+(q.src?' · '+q.src:'')));
-    const label=r.state==='ok'?'Richtig':(r.state==='bad'?'Falsch':'Nicht beantwortet');
-    head.append(el('span','pill '+r.state,label));
+    const label=r.state==='ok'?'Richtig':(r.state==='part'?'Teilweise richtig · '+r.pts+' Punkt':(r.state==='bad'?'Falsch':'Nicht beantwortet'));
+    head.append(el('span','pill '+(r.state==='part'?'bad':r.state),label));
     if(r.marked)head.append(el('span','pill blank','Markiert'));
     item.append(head,el('p','rtext',dispQ(q.q)));
     const opts=el('div','opts');
