@@ -225,7 +225,7 @@ pre{margin:10px 0 0;padding:12px;background:var(--paper);border:1.5px solid var(
       <div><dt>Bestanden ab</dt><dd id="mP">50 %</dd></div>
       <div><dt>Wertung</dt><dd>1 Punkt je Einfach-, bis 2 je Mehrfachauswahl</dd></div>
     </dl>
-    <p class="fine">Einfachauswahl: 1 Punkt bei richtiger Antwort. Mehrfachauswahl: bis zu 2 Punkte, 2 Punkte nur bei genau den richtigen Antworten, 1 Punkt bei teilweise richtiger Auswahl mit höchstens einer falschen Antwort (z. B. 1 richtig, 1 falsch). Die Zeit beträgt 120 Minuten für 82 Fragen.</p>
+    <p class="fine">Einfachauswahl: 1 Punkt bei richtiger Antwort. Mehrfachauswahl: es lassen sich höchstens 2 Antworten wählen. 2 Punkte, wenn beide richtig sind, 1 Punkt bei 1 richtig und 1 falsch oder nur 1 richtiger Antwort. Die Zeit beträgt 120 Minuten für 82 Fragen.</p>
 
     <div class="panel">
       <label class="check"><input type="checkbox" id="optShuffle" checked><span>Fragen und Antworten mischen<small>Bei jedem Durchgang eine neue Reihenfolge, auch der Antwortmöglichkeiten.</small></span></label>
@@ -364,7 +364,7 @@ function maxPts(q){return q.type==='multi'?2:1;}
 function pointsFor(q,a){
   if(q.type!=='multi')return a.length===1&&q.correct.includes(a[0])?1:0;
   const right=a.filter(x=>q.correct.includes(x)).length,wrong=a.length-right;
-  if(wrong===0&&right===q.correct.length)return 2;
+  if(wrong===0&&right===Math.min(2,q.correct.length))return 2;
   if(right>=1&&wrong<=1)return 1;
   return 0;
 }
@@ -530,7 +530,7 @@ function renderQuestion(){
   const locked=exam.practice&&exam.checked[exam.idx];
   $('qNum').textContent='Aufgabe '+(exam.idx+1);
   $('qTopic').textContent=q.topic;
-  $('qType').textContent=multi?'Mehrere Antworten richtig':'Eine Antwort richtig';
+  $('qType').textContent=multi?'Wähle bis zu 2 Antworten':'Eine Antwort richtig';
   $('qText').textContent=dispQ(q.q);
   const box=$('opts');box.replaceChildren();
   q.options.forEach((txt,i)=>{
@@ -550,7 +550,7 @@ function renderQuestion(){
   });
   const ex=$('explain');
   if(locked){
-    const ok=sameSet(sel,q.correct);
+    const ok=pointsFor(q,sel)===maxPts(q);
     ex.className='explain'+(ok?'':' bad');
     ex.replaceChildren(el('b',null,ok?'Richtig':'Nicht richtig'),el('span',null,q.explain||'Zu dieser Frage ist keine Erklärung hinterlegt.'));
     ex.hidden=false;
@@ -566,7 +566,10 @@ function renderQuestion(){
 function onPick(i,checked){
   const q=exam.qs[exam.idx];
   let a=exam.answers[exam.idx];
-  if(q.type==='multi')a=checked?Array.from(new Set(a.concat([i]))):a.filter(x=>x!==i);
+  if(q.type==='multi'){
+    if(checked&&!a.includes(i)&&a.length>=2){const inp=$('opts').children[i].querySelector('input');if(inp)inp.checked=false;return;}
+    a=checked?Array.from(new Set(a.concat([i]))):a.filter(x=>x!==i);
+  }
   else a=[i];
   exam.answers[exam.idx]=a.slice().sort((x,y)=>x-y);
   Array.from($('opts').children).forEach((lab,k)=>lab.classList.toggle('on',exam.answers[exam.idx].includes(k)));
